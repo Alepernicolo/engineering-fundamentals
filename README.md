@@ -1,12 +1,12 @@
 # Build, Publish and Code Quality analysis in CI
-This readme helps you to create an CI environment which builds your project, publishes it to Azure Container Registry and executes Code Quality Analsis.
+This readme helps you to create a CI environment which builds your project, publishes it to Azure Container Registry and executes Code Quality Analysis.
 
 ### Prerequisites
 - Be part of ipt Sandbox subscription on Azure
 - Be part of ipt organisation in Github
 
 ### Branches
-- **main**: Starting point to solve exercices
+- **main**: Starting point to solve exercises
 - **solution**: Example solution (Musterlösung)
 
 # Setup
@@ -14,9 +14,9 @@ This readme helps you to create an CI environment which builds your project, pub
   a) Note: If the 'fork' button in the repo does not work (e.g. because the iptch repo is currently not public or forking is disabled on organization-level), you can do it manually:
 
 ```
-# 1. Create an public repository in your personal github namespace
+# 1. Create a public repository in your personal github namespace
 # 2. Execute in your local terminal:
-git clone git@github.com:iptch/engineering-fundamentals.git
+git clone https://github.com/iptch/engineering-fundamentals.git
 cd engineering-fundamentals
 git remote remove origin
 git remote add origin https://github.com/<YourUsername>/<YourRepoName>.git
@@ -35,7 +35,7 @@ pip install azure-cli
 Check your setup by running the react app in your codespace. You should be able to access the Webapp in your browser.
 
 ```bash
-nvm install node
+nvm install 24
 npm install
 npm run dev
 ```
@@ -44,14 +44,14 @@ npm run dev
 Tests are vital to ensure that new functionality doesn't break existing features. To ensure that all existing tests are passed when pushing a code change, we want them to be automatically executed when creating a Pull Request.
 
 1. Create a test (e.g. for `src/Counter.tsx`) and execute it by running `npm test`
-2. Create a workflow in `.github/workflows` to create a GitHub Action which runs all tests. The action should be executed for every merge request or push to the main branch. Test results shall be displayed on the PR overview page.
+2. Create a workflow in `.github/workflows` to create a GitHub Action which runs all tests. The action should be executed for every pull request or push to the main branch. A failing test must make the workflow fail. Test results shall be displayed on the PR overview page.
 3. Verify the correct execution and display of Test results in Github
 
 
 ## PART B - Continuous Integration
-Fast shipping of new code can be crutial, for example in the case of security updates. We want our code to be automatically packaged into a Docker Image and published to a Container Registry after successfull completion of every Pull Request.
+Fast shipping of new code can be crucial, for example in the case of security updates. We want our code to be automatically packaged into a Docker Image and published to a Container Registry every time a Pull Request is merged into main.
 
-1. Choose your Container Registry. For example, create a personal AzureContainerRegistry in the Azure ipt Sandbox subscription, or a personal space on hub.docker.com.
+1. Choose your Container Registry. For example, create a personal AzureContainerRegistry in the Azure ipt Sandbox subscription, or a personal space on hub.docker.com. (Parts B.2 and C assume Azure Container Registry.)
   a. Store the required credentials in an appropriate place s.t. they can be accessed by the Github Pipeline; make sure they are not leaked in your code.
 2. Use the provided `Dockerfile` to publish your Docker Image to the container registry by creating a new workflow in `.github/workflows`. Ensure that a new appropriate Version Tag is used when publishing the image, and that the image is only pushed upon completion of the PR.
 3. If Docker is available on your local machine, you can try to pull your image from the Container Registry and run it locally.
@@ -80,14 +80,16 @@ Let's get started:
 ## PART D - Code Quality
 How's the quality of your code?
 
-Use a Github Action (`.github/workflows`) to do an automatic assessment of your Code Quality on [SonarCloud.io](SonarCloud.io). The analysis shall be done for each new Pull Request.
+Use a Github Action (`.github/workflows`) to do an automatic assessment of your Code Quality on [SonarCloud.io](https://sonarcloud.io). The analysis shall be done for each new Pull Request.
 
 Fix the issues detected by Sonar.
 
 ## PART E - GitOps (Requires Part B)
-ArgoCD is a heavy used tool to enable gitops. It monitors your github repository and applies the configuration to the configured namespace.
+ArgoCD is a heavily used tool to enable GitOps. It monitors your github repository and applies the configuration to the configured namespace.
 
 Deploy an AKS cluster and install ArgoCD on it. Then configure ArgoCD to monitor the corresponding configurations in your github repository and apply them to the configured namespace.
+
+This repository does not contain any Kubernetes configuration yet: write the manifests (e.g. Deployment and Service) yourself. Bonus: think about how a newly published image version gets into your repository, so that ArgoCD deploys it automatically.
 
 You can either use a Demo image [*dockerlimes/ipt-lr-eng*](https://hub.docker.com/r/dockerlimes/ipt-lr-eng), or your own image build in Part B.
 
