@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: engineering-fundamentals
+  annotations:
+    # cert-manager creates and renews the TLS certificate for the hosts below
+    cert-manager.io/issuer: letsencrypt
+    # Serve this app only over HTTPS (HTTP is redirected by Traefik)
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - engfundape.switzerlandnorth.cloudapp.azure.com
+      secretName: engineering-fundamentals-tls
+  rules:
+    - host: engfundape.switzerlandnorth.cloudapp.azure.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: engineering-fundamentals
+                port:
+                  name: http

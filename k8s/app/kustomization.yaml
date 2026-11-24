@@ -14,6 +14,8 @@ resources:
   - namespace.yaml
   - deployment.yaml
   - service.yaml
+  - issuer.yaml
+  - ingress.yaml
 
 # The single place where the deployed image version is set.
 # Update with: kustomize edit set image engineering-fundamentals=acrengfundapechn.azurecr.io/engineering-fundamentals:<tag>
