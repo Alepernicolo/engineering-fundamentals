@@ -12,11 +12,11 @@ traefik:
 
   service:
     spec:
-      type: LoadBalancer
-    annotations:
-      # Gives the public IP a free DNS name: engfundape.switzerlandnorth.cloudapp.azure.com
-      # (must be unique within the Azure region)
-      service.beta.kubernetes.io/azure-dns-label-name: engfundape
+      # Private: no public IP. The app and ArgoCD are only reachable via `kubectl port-forward`,
+      # which requires an Entra ID login in the ipt tenant (see infra/main.tf).
+      # To expose publicly again (behind an Entra ID login proxy), switch back to LoadBalancer
+      # with the annotation service.beta.kubernetes.io/azure-dns-label-name: engfundape
+      type: ClusterIP
 
   ports:
     web:

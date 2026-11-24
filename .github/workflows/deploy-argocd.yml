@@ -102,24 +102,36 @@ jobs:
             --name "$AKS_NAME" \
             --overwrite-existing
 
-      - name: Install / upgrade ArgoCD
+      # The cluster uses Entra ID authentication (no local accounts): convert the kubeconfig
+      # to log in with the Azure CLI session of the managed identity.
+      - name: Set up kubelogin
+        if: env.DEPLOY == 'true'
+        uses: azure/use-kubelogin@0ce7c36141aa27d4934872cf00b0120804c98a29 # v1.3
+        with:
+          kubelogin-version: v0.2.22
+
+      - name: Use Entra ID login for kubectl
+        if: env.DEPLOY == 'true'
+        run: kubelogin convert-kubeconfig -l azurecli
+
+      # Traefik (ingress + TLS termination) and cert-manager (Let's Encrypt certificates).
+      # Installed first: ArgoCD's and the app's Issuer/Ingress depend on them.
+      - name: Install / upgrade ingress (Traefik + cert-manager)
         if: env.DEPLOY == 'true'
         run: |
-          helm upgrade --install "$RELEASE_NAME" "$CHART_PATH" \
-            --namespace "$NAMESPACE" \
+          helm upgrade --install "$INGRESS_RELEASE_NAME" "$INGRESS_CHART_PATH" \
+            --namespace "$INGRESS_NAMESPACE" \
             --create-namespace \
             --wait \
             --timeout 10m \
             --rollback-on-failure \
             --history-max 5
 
-      # Traefik (ingress + TLS termination) and cert-manager (Let's Encrypt certificates).
-      # Installed before the Applications, since the app's Issuer/Ingress depend on them.
-      - name: Install / upgrade ingress (Traefik + cert-manager)
+      - name: Install / upgrade ArgoCD
         if: env.DEPLOY == 'true'
         run: |
-          helm upgrade --install "$INGRESS_RELEASE_NAME" "$INGRESS_CHART_PATH" \
-            --namespace "$INGRESS_NAMESPACE" \
+          helm upgrade --install "$RELEASE_NAME" "$CHART_PATH" \
+            --namespace "$NAMESPACE" \
             --create-namespace \
             --wait \
             --timeout 10m \
@@ -150,9 +162,10 @@ jobs:
         run: |
           {
             echo "### ArgoCD deployed to \`$AKS_NAME\` :octopus:"
-            echo "Access the UI locally:"
+            echo "Access the UI locally (requires an ipt Entra ID login with a role on the cluster):"
             echo '```sh'
             echo "az aks get-credentials --resource-group $AKS_RESOURCE_GROUP --name $AKS_NAME"
+            echo "kubelogin convert-kubeconfig -l azurecli"
             echo "kubectl -n $NAMESPACE get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d"
             echo "kubectl -n $NAMESPACE port-forward svc/$RELEASE_NAME-server 8080:80"
             echo '```'

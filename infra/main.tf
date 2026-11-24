@@ -174,6 +174,16 @@ resource "azurerm_kubernetes_cluster" "main" {
   oidc_issuer_enabled       = true
   workload_identity_enabled = true
 
+  # Private access, ipt users only: kubectl (and thereby port-forward to the app and ArgoCD)
+  # requires an Entra ID login in the ipt tenant plus an Azure RBAC role on this cluster.
+  # Uses Microsoft's first-party apps, so no app registration is needed.
+  azure_active_directory_role_based_access_control {
+    tenant_id          = data.azurerm_client_config.current.tenant_id
+    azure_rbac_enabled = true
+  }
+  # No shared client certificates: every access goes through Entra ID
+  local_account_disabled = true
+
   tags = local.tags
 }
 
@@ -186,13 +196,34 @@ resource "azurerm_role_assignment" "aks_acr_pull" {
   skip_service_principal_aad_check = true
 }
 
-# Let GitHub Actions (via the managed identity) fetch cluster credentials to install ArgoCD with Helm.
-# The cluster uses local Kubernetes accounts (no Entra ID RBAC), so the user credential has cluster-admin rights.
+# Let GitHub Actions (via the managed identity) fetch the cluster's kubeconfig ...
 resource "azurerm_role_assignment" "identity_aks_cluster_user" {
   scope                = azurerm_kubernetes_cluster.main.id
   role_definition_name = "Azure Kubernetes Service Cluster User Role"
   principal_id         = azurerm_user_assigned_identity.main.principal_id
   principal_type       = "ServicePrincipal"
+}
+
+# ... and install ArgoCD, Traefik and cert-manager with Helm (cluster-wide resources, CRDs)
+resource "azurerm_role_assignment" "identity_aks_rbac_admin" {
+  scope                = azurerm_kubernetes_cluster.main.id
+  role_definition_name = "Azure Kubernetes Service RBAC Cluster Admin"
+  principal_id         = azurerm_user_assigned_identity.main.principal_id
+  principal_type       = "ServicePrincipal"
+}
+
+# Whoever runs Terraform (you) can use kubectl and port-forward to the app and ArgoCD.
+# Grant further ipt users or an Entra group the same roles (or "RBAC Reader/Writer") to give them access.
+resource "azurerm_role_assignment" "current_user_aks_cluster_user" {
+  scope                = azurerm_kubernetes_cluster.main.id
+  role_definition_name = "Azure Kubernetes Service Cluster User Role"
+  principal_id         = data.azurerm_client_config.current.object_id
+}
+
+resource "azurerm_role_assignment" "current_user_aks_rbac_admin" {
+  scope                = azurerm_kubernetes_cluster.main.id
+  role_definition_name = "Azure Kubernetes Service RBAC Cluster Admin"
+  principal_id         = data.azurerm_client_config.current.object_id
 }
 
 # ---------------------------------------------------------------------------
