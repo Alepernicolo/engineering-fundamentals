@@ -6,12 +6,14 @@ on:
     paths:
       - "helm/argocd/**"
       - "helm/argocd-apps/**"
+      - "helm/ingress/**"
       - ".github/workflows/deploy-argocd.yml"
   pull_request:
     branches: [main] # lint + render only, never touches the cluster
     paths:
       - "helm/argocd/**"
       - "helm/argocd-apps/**"
+      - "helm/ingress/**"
       - ".github/workflows/deploy-argocd.yml"
   workflow_dispatch:
 
@@ -28,6 +30,9 @@ env:
   CHART_PATH: helm/argocd
   APPS_CHART_PATH: helm/argocd-apps
   APPS_RELEASE_NAME: argocd-apps
+  INGRESS_CHART_PATH: helm/ingress
+  INGRESS_RELEASE_NAME: ingress
+  INGRESS_NAMESPACE: ingress
   RELEASE_NAME: argocd
   NAMESPACE: argocd
   HELM_VERSION: v4.3.1
@@ -58,14 +63,16 @@ jobs:
         run: |
           helm dependency build "$CHART_PATH"
           helm dependency build "$APPS_CHART_PATH"
+          helm dependency build "$INGRESS_CHART_PATH"
 
       - name: Lint charts
-        run: helm lint "$CHART_PATH" "$APPS_CHART_PATH"
+        run: helm lint "$CHART_PATH" "$APPS_CHART_PATH" "$INGRESS_CHART_PATH"
 
       - name: Render charts
         run: |
           helm template "$RELEASE_NAME" "$CHART_PATH" --namespace "$NAMESPACE" > /dev/null
           helm template "$APPS_RELEASE_NAME" "$APPS_CHART_PATH" --namespace "$NAMESPACE"
+          helm template "$INGRESS_RELEASE_NAME" "$INGRESS_CHART_PATH" --namespace "$INGRESS_NAMESPACE" > /dev/null
 
       - name: Check Azure configuration
         if: env.DEPLOY == 'true'
@@ -106,6 +113,19 @@ jobs:
             --rollback-on-failure \
             --history-max 5
 
+      # Traefik (ingress + TLS termination) and cert-manager (Let's Encrypt certificates).
+      # Installed before the Applications, since the app's Issuer/Ingress depend on them.
+      - name: Install / upgrade ingress (Traefik + cert-manager)
+        if: env.DEPLOY == 'true'
+        run: |
+          helm upgrade --install "$INGRESS_RELEASE_NAME" "$INGRESS_CHART_PATH" \
+            --namespace "$INGRESS_NAMESPACE" \
+            --create-namespace \
+            --wait \
+            --timeout 10m \
+            --rollback-on-failure \
+            --history-max 5
+
       # Separate release: the Application/AppProject CRDs come from the ArgoCD release above
       - name: Install / upgrade ArgoCD Applications
         if: env.DEPLOY == 'true'
@@ -123,6 +143,7 @@ jobs:
           helm status "$RELEASE_NAME" --namespace "$NAMESPACE"
           kubectl get pods --namespace "$NAMESPACE"
           kubectl get applications --namespace "$NAMESPACE"
+          kubectl get pods,svc --namespace "$INGRESS_NAMESPACE"
 
       - name: Summary
         if: env.DEPLOY == 'true'

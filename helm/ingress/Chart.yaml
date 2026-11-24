@@ -1,0 +1,14 @@
+apiVersion: v2
+name: ingress
+description: Ingress (Traefik) and TLS certificates (cert-manager) for the engineering-fundamentals AKS cluster
+type: application
+version: 0.1.0
+
+dependencies:
+  # Pinned exact versions; bump deliberately
+  - name: traefik
+    version: 42.4.1
+    repository: https://traefik.github.io/charts
+  - name: cert-manager
+    version: v1.21.3
+    repository: https://charts.jetstack.io
