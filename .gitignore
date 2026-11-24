@@ -29,3 +29,6 @@ dist-ssr
 *.tfstate.*
 *.tfvars
 crash.log
+
+# Helm
+helm/**/charts/*.tgz

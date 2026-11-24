@@ -1,0 +1,119 @@
+name: Deploy ArgoCD to AKS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "helm/argocd/**"
+      - ".github/workflows/deploy-argocd.yml"
+  pull_request:
+    branches: [main] # lint + render only, never touches the cluster
+    paths:
+      - "helm/argocd/**"
+      - ".github/workflows/deploy-argocd.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # required for OIDC login to Azure (no stored secrets)
+
+# Never cancel a running Helm release: an interrupted upgrade leaves it locked in "pending-upgrade"
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CHART_PATH: helm/argocd
+  RELEASE_NAME: argocd
+  NAMESPACE: argocd
+  HELM_VERSION: v4.3.1
+  # Read from repository Variables, falling back to Secrets if stored there
+  AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID || secrets.AZURE_CLIENT_ID }}
+  AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID || secrets.AZURE_TENANT_ID }}
+  AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID || secrets.AZURE_SUBSCRIPTION_ID }}
+  AKS_RESOURCE_GROUP: ${{ vars.AKS_RESOURCE_GROUP || secrets.AKS_RESOURCE_GROUP }}
+  AKS_NAME: ${{ vars.AKS_NAME || secrets.AKS_NAME }}
+  # Deploy only from main (merge / manual run on main), never from PRs
+  DEPLOY: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Actions are pinned to commit SHAs to protect against tag hijacking
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Helm
+        uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Fetch chart dependencies
+        run: helm dependency build "$CHART_PATH"
+
+      - name: Lint chart
+        run: helm lint "$CHART_PATH"
+
+      - name: Render chart
+        run: helm template "$RELEASE_NAME" "$CHART_PATH" --namespace "$NAMESPACE" > /dev/null
+
+      - name: Check Azure configuration
+        if: env.DEPLOY == 'true'
+        run: |
+          missing=0
+          for v in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AKS_RESOURCE_GROUP AKS_NAME; do
+            if [ -z "${!v}" ]; then
+              echo "::error::$v is not set. Add it under Settings > Secrets and variables > Actions > Variables (use 'terraform output')."
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - name: Azure login (OIDC, user assigned managed identity)
+        if: env.DEPLOY == 'true'
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Get AKS credentials
+        if: env.DEPLOY == 'true'
+        run: |
+          az aks get-credentials \
+            --resource-group "$AKS_RESOURCE_GROUP" \
+            --name "$AKS_NAME" \
+            --overwrite-existing
+
+      - name: Install / upgrade ArgoCD
+        if: env.DEPLOY == 'true'
+        run: |
+          helm upgrade --install "$RELEASE_NAME" "$CHART_PATH" \
+            --namespace "$NAMESPACE" \
+            --create-namespace \
+            --wait \
+            --timeout 10m \
+            --rollback-on-failure \
+            --history-max 5
+
+      - name: Show ArgoCD status
+        if: env.DEPLOY == 'true'
+        run: |
+          helm status "$RELEASE_NAME" --namespace "$NAMESPACE"
+          kubectl get pods --namespace "$NAMESPACE"
+
+      - name: Summary
+        if: env.DEPLOY == 'true'
+        run: |
+          {
+            echo "### ArgoCD deployed to \`$AKS_NAME\` :octopus:"
+            echo "Access the UI locally:"
+            echo '```sh'
+            echo "az aks get-credentials --resource-group $AKS_RESOURCE_GROUP --name $AKS_NAME"
+            echo "kubectl -n $NAMESPACE get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d"
+            echo "kubectl -n $NAMESPACE port-forward svc/$RELEASE_NAME-server 8080:80"
+            echo '```'
+            echo "Then open http://localhost:8080 and log in as \`admin\`."
+          } >> "$GITHUB_STEP_SUMMARY"
