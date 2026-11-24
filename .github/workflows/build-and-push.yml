@@ -17,7 +17,12 @@ concurrency:
 
 env:
   IMAGE_NAME: engineering-fundamentals
-  REGISTRY: ${{ vars.ACR_NAME }}.azurecr.io
+  # Read from repository Variables, falling back to Secrets if stored there
+  AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID || secrets.AZURE_CLIENT_ID }}
+  AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID || secrets.AZURE_TENANT_ID }}
+  AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID || secrets.AZURE_SUBSCRIPTION_ID }}
+  ACR_NAME: ${{ vars.ACR_NAME || secrets.ACR_NAME }}
+  REGISTRY: ${{ vars.ACR_NAME || secrets.ACR_NAME }}.azurecr.io
   # Push only from main (PR merge / manual run on main), never from PRs
   PUSH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
 
@@ -30,17 +35,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Check Azure configuration
+        if: env.PUSH == 'true'
+        run: |
+          missing=0
+          for v in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID ACR_NAME; do
+            if [ -z "${!v}" ]; then
+              echo "::error::$v is not set. Add it under Settings > Secrets and variables > Actions > Variables (use 'terraform output')."
+              missing=1
+            fi
+          done
+          exit $missing
+
       - name: Azure login (OIDC, user assigned managed identity)
         if: env.PUSH == 'true'
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
       - name: Log in to ACR
         if: env.PUSH == 'true'
-        run: az acr login --name "${{ vars.ACR_NAME }}"
+        run: az acr login --name "$ACR_NAME"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
