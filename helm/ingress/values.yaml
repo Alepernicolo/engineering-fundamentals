@@ -6,6 +6,9 @@ traefik:
   ingressClass:
     enabled: true
     isDefaultClass: true
+    # Fixed name referenced by the app's Ingress and the cert-manager Issuer
+    # (the chart would otherwise name it after the release, e.g. "ingress-traefik")
+    name: traefik
 
   service:
     spec:
