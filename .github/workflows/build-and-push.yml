@@ -90,3 +90,53 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  # Part E bonus: GitOps image promotion.
+  # After a new image is pushed, write its tag into the app's Kustomize manifest and commit it.
+  # ArgoCD watches k8s/app on main, sees the commit and rolls out the new version.
+  # Commits made with GITHUB_TOKEN do not trigger workflows, so this cannot loop.
+  update-manifest:
+    needs: build-and-push
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the manifest change to main
+
+    env:
+      IMAGE_TAG: v1.0.${{ github.run_number }}
+      KUSTOMIZATION: k8s/app/kustomization.yaml
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+
+      - name: Set image tag in kustomization
+        run: |
+          # yq is preinstalled on GitHub-hosted Ubuntu runners
+          yq -i '(.images[] | select(.name == "engineering-fundamentals").newTag) = strenv(IMAGE_TAG)' "$KUSTOMIZATION"
+          git diff --stat
+
+      - name: Commit and push
+        run: |
+          if git diff --quiet; then
+            echo "Manifest already at $IMAGE_TAG, nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore(deploy): update engineering-fundamentals image to $IMAGE_TAG"
+          # Retry with rebase in case main moved on while the image was building
+          for attempt in 1 2 3; do
+            git push origin HEAD:main && exit 0
+            echo "Push rejected (attempt $attempt), rebasing on latest main..."
+            git pull --rebase origin main
+          done
+          echo "::error::Could not push the manifest update after 3 attempts"
+          exit 1
+
+      - name: Summary
+        run: |
+          echo "### Deployment manifest updated :rocket:" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$KUSTOMIZATION\` now uses image tag \`$IMAGE_TAG\`; ArgoCD will roll it out." >> "$GITHUB_STEP_SUMMARY"
