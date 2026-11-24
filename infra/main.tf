@@ -42,9 +42,11 @@ locals {
   location       = "switzerlandnorth"
   location_short = "chn"
 
-  # Optional GitHub repo as "owner/name". If set, GitHub Actions on main can log in
-  # as the managed identity via OIDC (no secrets). Leave empty to skip.
-  github_repository = "Alepernicolo/engineering-fundamentals"
+  # Optional GitHub repo for OIDC login (GitHub Actions on main -> managed identity, no secrets).
+  # Must match the token's subject claim exactly. GitHub uses the immutable format
+  # "owner@ownerId/repo@repoId" (see "subject claim" in the azure/login log output).
+  # Leave empty to skip.
+  github_repository = "Alepernicolo@15859071/engineering-fundamentals@1469966079"
 
   # AKS: a single small node is enough for ArgoCD + the demo app
   aks_node_count = 1
