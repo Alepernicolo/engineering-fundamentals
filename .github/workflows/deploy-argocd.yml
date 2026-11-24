@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - "helm/argocd/**"
+      - "helm/argocd-apps/**"
       - ".github/workflows/deploy-argocd.yml"
   pull_request:
     branches: [main] # lint + render only, never touches the cluster
     paths:
       - "helm/argocd/**"
+      - "helm/argocd-apps/**"
       - ".github/workflows/deploy-argocd.yml"
   workflow_dispatch:
 
@@ -24,6 +26,8 @@ concurrency:
 
 env:
   CHART_PATH: helm/argocd
+  APPS_CHART_PATH: helm/argocd-apps
+  APPS_RELEASE_NAME: argocd-apps
   RELEASE_NAME: argocd
   NAMESPACE: argocd
   HELM_VERSION: v4.3.1
@@ -51,13 +55,17 @@ jobs:
           version: ${{ env.HELM_VERSION }}
 
       - name: Fetch chart dependencies
-        run: helm dependency build "$CHART_PATH"
+        run: |
+          helm dependency build "$CHART_PATH"
+          helm dependency build "$APPS_CHART_PATH"
 
-      - name: Lint chart
-        run: helm lint "$CHART_PATH"
+      - name: Lint charts
+        run: helm lint "$CHART_PATH" "$APPS_CHART_PATH"
 
-      - name: Render chart
-        run: helm template "$RELEASE_NAME" "$CHART_PATH" --namespace "$NAMESPACE" > /dev/null
+      - name: Render charts
+        run: |
+          helm template "$RELEASE_NAME" "$CHART_PATH" --namespace "$NAMESPACE" > /dev/null
+          helm template "$APPS_RELEASE_NAME" "$APPS_CHART_PATH" --namespace "$NAMESPACE"
 
       - name: Check Azure configuration
         if: env.DEPLOY == 'true'
@@ -98,11 +106,23 @@ jobs:
             --rollback-on-failure \
             --history-max 5
 
+      # Separate release: the Application/AppProject CRDs come from the ArgoCD release above
+      - name: Install / upgrade ArgoCD Applications
+        if: env.DEPLOY == 'true'
+        run: |
+          helm upgrade --install "$APPS_RELEASE_NAME" "$APPS_CHART_PATH" \
+            --namespace "$NAMESPACE" \
+            --wait \
+            --timeout 5m \
+            --rollback-on-failure \
+            --history-max 5
+
       - name: Show ArgoCD status
         if: env.DEPLOY == 'true'
         run: |
           helm status "$RELEASE_NAME" --namespace "$NAMESPACE"
           kubectl get pods --namespace "$NAMESPACE"
+          kubectl get applications --namespace "$NAMESPACE"
 
       - name: Summary
         if: env.DEPLOY == 'true'

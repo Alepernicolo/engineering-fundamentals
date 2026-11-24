@@ -1,0 +1,11 @@
+apiVersion: v2
+name: argocd-apps
+description: ArgoCD Applications and Projects for engineering-fundamentals (wraps the upstream argocd-apps chart)
+type: application
+version: 0.1.0
+
+dependencies:
+  - name: argocd-apps
+    # Pinned exact version; bump deliberately
+    version: 2.0.8
+    repository: https://argoproj.github.io/argo-helm

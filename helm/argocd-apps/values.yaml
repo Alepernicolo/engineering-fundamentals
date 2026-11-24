@@ -1,0 +1,48 @@
+# Installed as a separate Helm release after ArgoCD itself, because the
+# Application/AppProject CRDs must exist before these resources can be created.
+# Reference: https://github.com/argoproj/argo-helm/blob/main/charts/argocd-apps/values.yaml
+argocd-apps:
+  projects:
+    # Dedicated project: this app may only come from this repo and only deploy to its namespace
+    engineering-fundamentals:
+      namespace: argocd
+      description: Demo app of the engineering-fundamentals course
+      sourceRepos:
+        - https://github.com/Alepernicolo/engineering-fundamentals.git
+      destinations:
+        - server: https://kubernetes.default.svc
+          namespace: engineering-fundamentals
+      # The only cluster-scoped resource the app manages is its own Namespace
+      clusterResourceWhitelist:
+        - group: ""
+          kind: Namespace
+
+  applications:
+    engineering-fundamentals:
+      namespace: argocd
+      project: engineering-fundamentals
+      # Deleting the Application also deletes the resources it deployed
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+      source:
+        # Public repository, so no repository credentials are needed
+        repoURL: https://github.com/Alepernicolo/engineering-fundamentals.git
+        targetRevision: main
+        path: k8s/app
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: engineering-fundamentals
+      syncPolicy:
+        automated:
+          prune: true    # delete resources that were removed from Git
+          selfHeal: true # revert manual changes made in the cluster
+        syncOptions:
+          - CreateNamespace=true
+          - PruneLast=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 3m
+      revisionHistoryLimit: 5

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: engineering-fundamentals
+spec:
+  # Public IP via the Azure load balancer, so changes can be checked in the browser.
+  # Switch to ClusterIP (and use port-forward or an ingress) to keep the app private.
+  type: LoadBalancer
+  selector:
+    app: engineering-fundamentals
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
