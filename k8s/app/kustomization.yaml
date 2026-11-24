@@ -1,15 +1,12 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-
 namespace: engineering-fundamentals
-
 labels:
   - pairs:
       app.kubernetes.io/name: engineering-fundamentals
       app.kubernetes.io/part-of: engineering-fundamentals
     # Selectors are set explicitly in the manifests (they are immutable once deployed)
     includeSelectors: false
-
 resources:
   - namespace.yaml
   - deployment.yaml
@@ -18,10 +15,9 @@ resources:
   # Public access paused until an Entra ID (ipt tenant) login protects the app.
   # Re-enable by uncommenting once oauth2-proxy is in place.
   # - ingress.yaml
-
 # The single place where the deployed image version is set.
 # Update with: kustomize edit set image engineering-fundamentals=acrengfundapechn.azurecr.io/engineering-fundamentals:<tag>
 images:
   - name: engineering-fundamentals
     newName: acrengfundapechn.azurecr.io/engineering-fundamentals
-    newTag: v1.0.5
+    newTag: v1.0.10
